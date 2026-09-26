@@ -1,0 +1,39 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.lic
+.netrc
+
+# Environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+
+# Private research and execution records
+.agent/
+.agents/
+.codex/
+handoffs/
+logs/
+results/
+outputs/
+slurm-*.out
+
+# Downloaded assets
+checkpoints/
+models/
+datasets/
+*.safetensors
+*.pt
+*.pth
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
