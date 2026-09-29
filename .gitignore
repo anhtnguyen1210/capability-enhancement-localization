@@ -37,3 +37,12 @@ datasets/
 .vscode/
 .idea/
 .DS_Store
+
+# Prepared panels, local runs, containers and release archives
+data/
+runs/
+*.sif
+*.bin
+*.log
+*.zip
+*.bundle

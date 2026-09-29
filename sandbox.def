@@ -1,0 +1,7 @@
+Bootstrap: docker
+From: python:3.12-slim
+
+%environment
+    export PYTHONDONTWRITEBYTECODE=1
+    export OMP_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
