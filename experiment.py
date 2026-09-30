@@ -2,12 +2,11 @@
 import argparse
 import fcntl
 import itertools
-import hashlib
 import json
 import time
 import uuid
 from pathlib import Path
-from common import ROOT, code_digest, condition_id, digest, metrics, publish, rank_key, read
+from common import ROOT, code_digest, condition_id, digest, file_digest, metrics, publish, rank_key, read
 from prepare_data import validate, DATASETS
 
 STAGES = ('prepare', 'baseline', 'singleton', 'search', 'confirmation', 'heldout')
@@ -18,7 +17,24 @@ def singleton_conditions(spec):
 
 
 def checked_result(path, manifest):
+    path = Path(path)
     result = read(path)
+    stage = path.parent.name
+    role = 'heldout' if stage == 'heldout' else 'discovery'
+    heads = result['heads']
+    if stage not in ('singleton','search','confirmation','heldout') or result.get('stage') != stage or result['role'] != role:
+        raise ValueError('Result stage or panel role differs')
+    if not isinstance(heads, list) or not 1 <= len(heads) <= 3:
+        raise ValueError('Invalid head condition')
+    for pair in heads:
+        if (not isinstance(pair,list) or len(pair) != 2 or any(type(x) is not int for x in pair)
+                or not 0 <= pair[0] < manifest['model']['layers']
+                or not 0 <= pair[1] < manifest['model']['heads']):
+            raise ValueError('Invalid head coordinates')
+    if heads != sorted(heads) or len({tuple(h) for h in heads}) != len(heads):
+        raise ValueError('Unsorted or duplicate head coordinates')
+    if path.stem != condition_id(heads) or (stage == 'singleton' and len(heads) != 1) or (stage == 'search' and len(heads) == 1):
+        raise ValueError('Result condition differs from its file or stage')
     if result['manifest_sha256'] != digest(manifest):
         raise ValueError('Result belongs to a different experiment')
     if result['metrics'] != metrics(result['records'], result['intact']):
@@ -27,7 +43,23 @@ def checked_result(path, manifest):
         raise ValueError('Incomplete result')
     if [r['sample_id'] for r in result['records']] != manifest['sample_ids'][result['role']]:
         raise ValueError('Result source identities differ from frozen panel')
+    for row, intact in zip(result['records'], result['intact']):
+        for key in ('input_ids', 'prompt', 'scope_record_sha256'):
+            if row.get(key) != intact.get(key):
+                raise ValueError('Intervention and intact inputs differ')
     return result
+
+
+def checked_baseline(run, manifest):
+    baseline = read(run/'baseline.json')
+    if baseline['manifest_sha256'] != digest(manifest) or baseline['repeat_agreement'] is not True:
+        raise ValueError('Intact repeat validation is required')
+    if baseline['records'] != baseline['repeat']:
+        raise ValueError('Intact repeat records differ')
+    if [r['sample_id'] for r in baseline['records']] != manifest['sample_ids']['discovery']:
+        raise ValueError('Incomplete or mismatched baseline sources')
+    metrics(baseline['records'], baseline['repeat'])
+    return baseline
 
 
 def checked_summary(path, manifest):
@@ -51,11 +83,12 @@ def prepare(args):
     for role, rows in data['panels'].items():
         refs = membership[role]
         if any(r['index'] != ref['index'] or r['split'] != ref['split'] or r['config'] != ref['config']
+               or r['sample_id'] != f"{ref['config']}:{ref['split']}:{ref['index']}"
                or digest(r['doc']) != ref['source_sha256'] for r,ref in zip(rows,refs)):
             raise ValueError('Prepared source content differs')
     manifest = {'model_key':args.model, 'model':spec, 'task':args.task, 'data_sha256':digest(data),
                 'code_sha256':code_digest(),
-                'sandbox_sha256':hashlib.sha256(args.sandbox_image.read_bytes()).hexdigest() if args.task == 'mbpp' else None,
+                'sandbox_sha256':file_digest(args.sandbox_image) if args.task == 'mbpp' else None,
                 'batch_size':8, 'max_heads':3, 'nominees':10, 'finalists':10,
                 'counts':{k:len(v) for k,v in data['panels'].items()},
                 'sample_ids':{k:[r['sample_id'] for r in v] for k,v in data['panels'].items()}}
@@ -108,17 +141,11 @@ def execute(args, evaluator_class=None):
     role = 'heldout' if args.stage == 'heldout' else 'discovery'
     if args.stage == 'baseline':
         if (args.run/'baseline.json').exists():
-            baseline = read(args.run/'baseline.json')
-            if baseline['manifest_sha256'] != digest(manifest) or not baseline['repeat_agreement']:
-                raise ValueError('Existing baseline did not pass; use a fresh run after investigating')
-            if baseline['records'] != baseline['repeat']:
-                raise ValueError('Baseline repeat records differ')
+            checked_baseline(args.run,manifest)
             return
         conditions = [[], []]
     else:
-        baseline = read(args.run/'baseline.json')
-        if baseline['manifest_sha256'] != digest(manifest) or not baseline['repeat_agreement']:
-            raise ValueError('Intact repeat validation is required')
+        checked_baseline(args.run,manifest)
         if args.stage == 'singleton':
             conditions = singleton_conditions(manifest['model'])
         elif args.stage == 'search':
@@ -164,14 +191,16 @@ def execute(args, evaluator_class=None):
                  'hardware':evaluator.hardware, 'records':intact, 'repeat':repeat})
         if not agreement:
             raise RuntimeError('Repeated intact evaluation differed')
+        checked_baseline(args.run,manifest)
         return
     for heads in remaining:
         start = time.monotonic()
         records, activity = evaluator.evaluate(heads, attempt/condition_id(heads))
-        result = {'manifest_sha256':digest(manifest), 'role':role, 'heads':heads,
+        result = {'manifest_sha256':digest(manifest), 'stage':args.stage, 'role':role, 'heads':heads,
                   'records':records, 'intact':intact, 'metrics':metrics(records,intact),
                   'activity':activity, 'hardware':evaluator.hardware, 'seconds':time.monotonic()-start}
         publish(stage_dir/f'{condition_id(heads)}.json',result)
+        checked_result(stage_dir/f'{condition_id(heads)}.json',manifest)
         print(condition_id(heads),result['metrics'],flush=True)
     if args.stage == 'search':
         freeze_finalists(args.run,manifest)

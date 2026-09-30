@@ -40,6 +40,9 @@ def _secure_humaneval_execution(
         }
     if completed.returncode == 0:
         outcome = "passed"
+    elif completed.returncode == 125:
+        # The helper reserves this status for setup/filter/exec failures.
+        outcome = "sandbox_error"
     elif completed.returncode < 0:
         outcome = "crash"
     else:

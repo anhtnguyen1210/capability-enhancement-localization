@@ -2,18 +2,21 @@
 from collections import defaultdict
 
 def attach_fixed_head_hooks(layers, head_pairs, num_heads, head_dim):
-    """Supports HF and single-device vLLM Qwen2 layers; fail closed on shape drift."""
+    """Validate query-head coordinates and fail closed on projection shape drift."""
     groups=defaultdict(list)
     for layer,head in head_pairs:
-        assert 0<=layer<len(layers) and 0<=head<num_heads
-        assert head not in groups[layer]
+        if type(layer) is not int or type(head) is not int or not 0<=layer<len(layers) or not 0<=head<num_heads:
+            raise ValueError('Head coordinates are outside the model geometry')
+        if head in groups[layer]:
+            raise ValueError('Duplicate head coordinate')
         groups[layer].append(head)
     activity={str(layer):{'calls':0,'nonzero_before':0} for layer in groups}
     handles=[]
     for layer,heads in groups.items():
         def hook(module,args,layer=layer,heads=tuple(heads)):
             x=args[0]
-            assert x.shape[-1]==num_heads*head_dim, (x.shape,num_heads,head_dim)
+            if x.shape[-1] != num_heads*head_dim:
+                raise ValueError('Attention output shape differs from query-head geometry')
             y=x.clone()
             for head in heads:
                 sl=slice(head*head_dim,(head+1)*head_dim)

@@ -6,18 +6,24 @@ Completed checks:
   membership manifest, using locally cached public source data.
 - Panel sizes and source-ID disjointness passed for all four tasks. Arithmetic
   balance/problem separation, BoolQ passage separation, and MBPP prompt/train/test
-  separation passed. MBPP discovery contains 374 training rows only.
+  separation passed. MBPP discovery contains 374 training rows only. Arithmetic
+  discovery preserves 2,000 source rows with 1,999 distinct problem texts; its
+  one existing repeated problem is disclosed in `configs/data_notes.json`.
 - Actual checkpoint tokenizers rendered Arithmetic and three-shot MBPP prompts
   for all three models. SmolLM3's `/no_think` mode and empty thinking prefix passed.
-- CPU unit tests cover task preparation, paired metrics, immutable result writes,
+- **25 CPU tests passed.** The tests cover task preparation, paired metrics, immutable result writes,
   native Qwen2/Llama/SmolLM3 head-hook activity, slice isolation and restoration,
   selection prerequisites, 175-candidate search, finalist freezing, confirmation,
-  held-out rank preservation, resumption and tamper rejection.
+  held-out rank preservation, resumption and tamper rejection. Further checks cover
+  numerical likelihood offsets/normalization, full and partial generation batches
+  on all three tiny native architectures, stop-token trimming, complete baseline
+  evidence, stage/condition/input binding, and sandbox setup-error classification.
 - Preparation and idempotent preparation resumption passed for all twelve
   model/task combinations, without loading model weights.
 - All Python modules compile. The seccomp C helper compiles with
   `cc -O2 -Wall -Werror`.
-- Tracked content and anonymous commit metadata are checked before packaging.
+- Working, staged and historical committed contents, commit messages and
+  anonymous author/committer metadata are checked before publication.
 
 Limits:
 

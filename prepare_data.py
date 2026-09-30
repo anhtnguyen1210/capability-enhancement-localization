@@ -16,6 +16,8 @@ COUNTS = {'arithmetic': (2000, 1000), 'hellaswag': (2000, 10042),
 
 
 def validate(task, panels):
+    if set(panels) != {'discovery','heldout'}:
+        raise ValueError('Unexpected panel roles')
     discovery, heldout = panels['discovery'], panels['heldout']
     if (len(discovery), len(heldout)) != COUNTS[task]:
         raise ValueError('Panel counts differ from the release protocol')
@@ -40,6 +42,8 @@ def validate(task, panels):
     if task == 'mbpp':
         train = {r['doc']['task_id'] for r in discovery}
         test = {r['doc']['task_id'] for r in heldout}
+        if len(train) != len(discovery) or len(test) != len(heldout):
+            raise ValueError('Duplicate MBPP task IDs')
         if train & test or (train | test) & set(range(1, 11)):
             raise ValueError('MBPP train/test/prompt overlap')
         if {r['split'] for r in discovery} != {'train'} or {r['split'] for r in heldout} != {'test'}:

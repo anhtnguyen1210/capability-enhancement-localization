@@ -14,7 +14,7 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True)
-    parser.add_argument("--repo", default=str(Path(__file__).resolve().parents[1]))
+    parser.add_argument("--repo", default=str(Path(__file__).resolve().parent))
     parser.add_argument("--timeout-seconds", type=float, default=10.0)
     parser.add_argument("--memory-bytes", type=int, default=536_870_912)
     parser.add_argument("--pids-limit", type=int, default=128)

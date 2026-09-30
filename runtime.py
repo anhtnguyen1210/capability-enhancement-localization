@@ -14,6 +14,23 @@ def integer_answer(text):
     return int(text) if re.fullmatch(r'[+-]?\d+', text) else None
 
 
+def decode_completion(tokenizer, ids, eos, marker=None):
+    """Exclude batch padding after a per-example EOS or textual stop."""
+    ids = list(ids)
+    end = next((i for i, token in enumerate(ids) if token in eos), None)
+    if end is not None:
+        ids = ids[:end+1]
+    text = tokenizer.decode(ids, skip_special_tokens=True)
+    stopped = bool(marker and marker in text)
+    if stopped:
+        for length in range(1, len(ids)+1):
+            if marker in tokenizer.decode(ids[:length], skip_special_tokens=True):
+                ids = ids[:length]
+                text = tokenizer.decode(ids, skip_special_tokens=True)
+                break
+    return ids, text, stopped, end is not None and not stopped
+
+
 def mbpp_context(doc):
     def question(row):
         return ('You are an expert Python programmer, and here is your task: '
@@ -76,6 +93,7 @@ class Evaluator:
             raise RuntimeError('A CUDA GPU with BF16 support is required')
         torch.set_num_threads(2)
         torch.manual_seed(0)
+        self.device = 'cuda'
         self.torch, self.model_key, self.task, self.rows = torch, model_key, task, rows
         self.image = image
         self.tokenizer = AutoTokenizer.from_pretrained(model_spec['id'], revision=model_spec['revision'],
@@ -131,7 +149,7 @@ class Evaluator:
                 from hellaswag_evaluation import score_examples as hellaswag_score
                 scorer = boolq_score if self.task == 'boolq' else hellaswag_score
                 scored = scorer(model, self.prepared, condition={'head_pairs':heads},
-                                pad_token_id=tok.pad_token_id, batch_size_examples=8, device='cuda')
+                                pad_token_id=tok.pad_token_id, batch_size_examples=8, device=self.device)
                 bank = {r['sample_id']:r for r in scored}
                 records = [bank[r['sample_id']] for r in self.rows]
             else:
@@ -163,7 +181,7 @@ class Evaluator:
                 return torch.tensor(['[DONE]' in text for text in texts], device=ids.device)
         for start in range(0, len(self.rows), 8):
             rows, prompts = self.rows[start:start+8], self.prepared[start:start+8]
-            enc = tok(prompts, padding=True, add_special_tokens=False, return_tensors='pt').to('cuda')
+            enc = tok(prompts, padding=True, add_special_tokens=False, return_tensors='pt').to(self.device)
             width = enc['input_ids'].shape[1]
             if width+cap > model.config.max_position_embeddings:
                 raise ValueError('Prompt exceeds context window; truncation is forbidden')
@@ -171,15 +189,11 @@ class Evaluator:
             with torch.inference_mode():
                 sequences = model.generate(**enc, generation_config=config, stopping_criteria=stops)
             for j,row in enumerate(rows):
-                ids = sequences[j,width:].tolist()
-                end = next((i for i,t in enumerate(ids) if t in eos), None)
-                if end is not None:
-                    ids = ids[:end+1]
-                text = tok.decode(ids, skip_special_tokens=True)
-                stopped = self.task == 'mbpp' and '[DONE]' in text
+                ids, text, stopped, ended = decode_completion(tok, sequences[j,width:].tolist(), eos,
+                                       '[DONE]' if self.task == 'mbpp' else None)
                 item = {'sample_id':row['sample_id'], 'prompt':prompts[j],
                         'input_ids':enc['input_ids'][j][enc['attention_mask'][j].bool()].tolist(),
-                        'output_ids':ids, 'text':text, 'capped':end is None and len(ids)>=cap and not stopped,
+                        'output_ids':ids, 'text':text, 'capped':not ended and len(ids)>=cap and not stopped,
                         'thinking_marker_in_output':'<think>' in text or '</think>' in text}
                 if self.task == 'arithmetic':
                     pred = integer_answer(text)

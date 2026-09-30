@@ -34,7 +34,11 @@ continuations directly and do not generate a reasoning response.
 are downloaded separately from pinned public revisions. Arithmetic uses 200
 examples per subtask for discovery and 100 per subtask for held-out evaluation,
 from ten arithmetic subtasks. Both panels are drawn from the source validation
-split and have disjoint problem text. HellaSwag and BoolQ use training examples
+split and have disjoint problem text across discovery and held-out. The frozen
+discovery panel contains one repeated problem under two different source IDs:
+2,000 rows but 1,999 distinct problem texts. This existing repetition is preserved
+and listed in `configs/data_notes.json`; held-out has 1,000 distinct problems.
+HellaSwag and BoolQ use training examples
 for discovery and their full labeled validation split for held-out evaluation.
 BoolQ discovery keeps one question per passage and excludes held-out passages.
 MBPP uses only its 374 training tasks for discovery and all 500 test tasks for
@@ -50,7 +54,8 @@ Inference uses batches of eight examples, BF16, SDPA and greedy generation.
 Arithmetic has a 32-token cap. MBPP has a 256-token cap, a three-shot prompt, an
 assistant `[BEGIN]` prefill, and `[DONE]` stopping. MBPP programs run only through
 the isolated Apptainer/seccomp scorer with a three-second program timeout.
-Formatting and token-cap diagnostics are saved. Generation applies the native
+Formatting and token-cap diagnostics are saved. Tokens padded after an example
+reaches `[DONE]` are excluded from its saved completion. Generation applies the native
 chat template once and then tokenizes without adding a second set of special
 tokens. Templates use a fixed date. These choices define this preliminary release;
 they are not a claim of bit-for-bit parity with all historical adapters/results.
@@ -132,7 +137,8 @@ are bundled or asserted by this preliminary implementation.
 See `VALIDATION.md` for checks performed and remaining validation limits. Only
 reviewed source, tests, public checkpoint identifiers and dataset membership
 metadata belong in a release. Generated `data/` and `runs/` are ignored.
-`audit_release.py` checks tracked files and anonymous Git author/committer metadata:
+`audit_release.py` checks the working tree, staged content, all committed file
+versions, commit messages, and anonymous Git author/committer metadata:
 
 ```bash
 python audit_release.py

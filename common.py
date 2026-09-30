@@ -38,6 +38,8 @@ def publish(path, value):
 
 
 def metrics(records, intact):
+    if any(type(r.get('correct')) is not bool for r in [*records, *intact]):
+        raise ValueError('Correctness must be a boolean for every example')
     ids = [r['sample_id'] for r in records]
     if not ids or len(set(ids)) != len(ids) or ids != [r['sample_id'] for r in intact]:
         raise ValueError('Paired source identities differ or contain duplicates')
@@ -61,6 +63,11 @@ def rank_key(result):
     m = result['metrics']
     heads = result['heads']
     return (-m['gain'], m['damaged'], -m['correct'], len(heads), heads)
+
+
+def file_digest(path):
+    with Path(path).open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
 def code_digest():

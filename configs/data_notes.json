@@ -1,0 +1,16 @@
+{
+  "arithmetic": {
+    "discovery_rows": 2000,
+    "discovery_distinct_problem_texts": 1999,
+    "repeated_problem_source_ids": [
+      [
+        "arithmetic_3ds:validation:1146",
+        "arithmetic_2ds:validation:1382"
+      ]
+    ],
+    "heldout_rows": 1000,
+    "heldout_distinct_problem_texts": 1000,
+    "discovery_heldout_problem_overlap": 0,
+    "policy": "Preserve the frozen source-row membership; disclose existing repeated source text rather than silently replacing rows."
+  }
+}
